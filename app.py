@@ -99,8 +99,8 @@ app.add_middleware(
 
 # Static file routes
 app.mount("/static", StaticFiles(directory=settings.UPLOAD_DIR), name="static")
-app.mount("/static/photos", StaticFiles(directory=settings.PHOTOS_DIR), name="static_photos")
-app.mount("/static/horoscopes", StaticFiles(directory=settings.HOROSCOPES_DIR), name="static_horoscopes")
+app.mount("/static/photos", StaticFiles(directory=settings.UPLOAD_DIR), name="static_photos")
+app.mount("/static/horoscopes", StaticFiles(directory=settings.UPLOAD_DIR), name="static_horoscopes")
 
 # Include modularized routers
 app.include_router(photostudio_router)

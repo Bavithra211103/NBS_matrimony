@@ -148,7 +148,10 @@ async def get_current_user_matrimony(auth: HTTPAuthorizationCredentials = Depend
                 logger.warning(f"User not found for id/email: {user_id}")
                 raise HTTPException(status_code=401, detail="User not found")
             
-            return dict(user)
+            user_dict = dict(user)
+            user_dict["user_type"] = user_type      # always use token value
+            user_dict["matrimony_id"] = user_id     # ensure matrimony_id is set
+            return user_dict
         finally:
             if 'cur' in locals(): cur.close()
             if 'conn' in locals(): conn.close()

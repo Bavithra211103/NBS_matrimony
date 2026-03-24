@@ -23,11 +23,11 @@ class Settings:
     HOROSCOPES_DIR = BASE_DIR / os.getenv("HOROSCOPES_DIR", "myapp/uploaded_horoscopes")
     
     DB_CONFIG = {
-        "dbname": os.getenv("dbname"),
-        "user": os.getenv("user"),
-        "password": os.getenv("password"),
-        "host": os.getenv("host"),
-        "port": os.getenv("port")
+        "dbname": os.getenv("DB_NAME"),
+        "user": os.getenv("DB_USER"),
+        "password": os.getenv("DB_PASSWORD"),
+        "host": os.getenv("DB_HOST", "localhost"),
+        "port": os.getenv("DB_PORT", "5432")
     }
     
     BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")

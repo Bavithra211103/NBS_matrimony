@@ -1,3 +1,4 @@
+import firebase_admin 
 import random
 import traceback
 import psycopg2
@@ -32,10 +33,16 @@ def generate_matrimony_id():
         if 'cur' in locals() and cur: cur.close()
         if 'conn' in locals() and conn: conn.close()
 
+
 def send_push_notification(token: str, title: str, body: str):
     """
     Send a push notification to a specific device token.
     """
+    # Check if Firebase is initialized
+    if not firebase_admin._apps:
+        logger.warning("Firebase not initialized. Skipping push notification.")
+        return {"status": "skipped", "message": "Firebase not configured. Add cred/firebase.json to enable."}
+
     message = messaging.Message(
         notification=messaging.Notification(
             title=title,
@@ -51,4 +58,4 @@ def send_push_notification(token: str, title: str, body: str):
     except Exception as e:
         logger.error(f"Error sending message: {str(e)}")
         logger.error(traceback.format_exc())
-        raise HTTPException(status_code=500, detail="Internal server error")
+        return {"status": "error", "message": str(e)}  # return instead of raise so it doesn't crash

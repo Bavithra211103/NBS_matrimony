@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, Form, File, UploadFile, Query, Body
-from typing import List, Dict, Any, Optional, Literal
+from fastapi import APIRouter, Depends, HTTPException, Form, File, UploadFile, Query, Body, Request
+from typing import List, Dict, Any, Optional, Literal, Annotated
 import psycopg2
 from psycopg2.extras import DictCursor, RealDictCursor
 import logging
@@ -95,9 +95,9 @@ async def register_matrimony(
     preferred_rashi: Optional[str] = Form(None),
     preferred_location: Optional[str] = Form(None),
     preferred_work_status: Optional[str] = Form(None),
-    photo: Optional[UploadFile] = File(None),
-    photos: Optional[List[UploadFile]] = File(None),
-    horoscope_documents: Optional[List[UploadFile]] = File(None),
+    photo: Annotated[Optional[UploadFile], File()] = None,
+    photos: Annotated[Optional[List[UploadFile]], File()] = None,
+    horoscope_documents: Annotated[Optional[List[UploadFile]], File()] = None,
     matrimony_id: Optional[str] = Form(None),
     blood_group: Optional[str] = Form(None)
 ):
@@ -424,7 +424,7 @@ async def get_matrimony_profiles(
         logger.info(f"Current user: {current_user}")
         logger.info(f"Requested language: {language}")
 
-        user_type = current_user["user_type"].lower()
+        user_type = (current_user.get("user_type") or "user").lower()
 
         # Conditional base query depending on user type
         if user_type == "admin":
@@ -449,6 +449,7 @@ async def get_matrimony_profiles(
                     SELECT blocked_matrimony_id
                     FROM blocked_users
                     WHERE is_blocked = true
+                    AND blocked_matrimony_id IS NOT NULL
                 )
             """
             params.append(opposite_gender)
@@ -565,6 +566,7 @@ async def get_matrimony_profiles(
                         default_profiles.append(profile_obj)
             except ValidationError as e:
                 logger.error(f"Validation error for {profile_dict.get('matrimony_id')}: {e}")
+                logger.error(f"Profile data that failed: {profile_dict}")
                 continue
 
         return {"Profiles": all_profiles} if user_type == "admin" else {
@@ -798,21 +800,20 @@ async def get_my_profiles(current_user: dict = Depends(get_current_user_matrimon
         query = """
         SELECT 
             mp.*, 
-            COALESCE(SUM(sa.points), 0) AS points_spent
+            COALESCE(sa.points_spent, 0) AS points_spent
         FROM 
             matrimony_profiles mp
-        LEFT JOIN 
-            spend_actions sa 
-        ON 
-            mp.matrimony_id = sa.matrimony_id
+        LEFT JOIN (
+            SELECT matrimony_id, SUM(points) AS points_spent
+            FROM spend_actions
+            GROUP BY matrimony_id
+        ) sa ON mp.matrimony_id = sa.matrimony_id
         WHERE 
             (%(email)s IS NULL OR mp.email = %(email)s)
             AND (%(matrimony_id)s IS NULL OR mp.matrimony_id = %(matrimony_id)s)
-                AND mp.is_active = TRUE
-                AND mp.is_verified = TRUE
-                AND mp.verification_status = 'approve'
-        GROUP BY 
-            mp.id
+            AND mp.is_active = TRUE
+            AND mp.is_verified = TRUE
+            AND mp.verification_status = 'approve'
         LIMIT 1;
         """
         cur.execute(query, {"email": email, "matrimony_id": matrimony_id})
@@ -909,7 +910,9 @@ async def update_matrimony_profile(
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
     try:
-        user_type = current_user.get("user_type", "").lower()
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Unauthorized: Invalid or missing token")
+        user_type = (current_user.get("user_type") or "").lower()
 
         if user_type == "admin":
             if not matrimony_id:
@@ -995,10 +998,13 @@ async def update_matrimony_profile(
         if photos:
             cur.execute("SELECT photos FROM matrimony_profiles WHERE matrimony_id = %s", (matrimony_id,))
             existing_record = cur.fetchone()
-            existing_photos_list = existing_record.get("photos", []) if existing_record else []
+            existing_photos_list = (existing_record.get("photos") or []) if existing_record else []
+            if isinstance(existing_photos_list, str):
+                existing_photos_list = [x.strip() for x in existing_photos_list.strip('{}').split(',') if x.strip()]
             new_photo_urls = [file_handler.upload_file(file, "photos") for file in photos]
             all_photos = list(dict.fromkeys(existing_photos_list + new_photo_urls))
             update_fields["photos"] = "{" + ",".join(all_photos) + "}"
+
 
         if horoscope_documents:
             horoscope_urls = [file_handler.upload_file(file, "horoscopes") for file in horoscope_documents]
@@ -1157,31 +1163,36 @@ async def delete_profiles_by_admin(
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        
-        # Soft delete by moving to a deleted_profiles table or just marking as deleted
-        # The user's app.py seems to have a specific logic for this.
-        # Let's assume there is a deleted_profiles table.
-        
+
         deleted_count = 0
         deleted_log_ids = []
         for m_id in matrimony_ids:
-            cur.execute("SELECT * FROM matrimony_profiles WHERE matrimony_id = %s", (m_id,))
-            profile = cur.fetchone()
-            if profile:
-                # Insert into deleted_profiles
-                columns = [desc[0] for desc in cur.description]
-                placeholders = ", ".join(["%s"] * len(columns))
-                col_names = ", ".join(columns)
-                cur.execute(f"INSERT INTO deleted_profiles ({col_names}) VALUES ({placeholders})", list(profile))
-                
-                # Delete from matrimony_profiles
+            try:
+                cur.execute("""
+                    INSERT INTO deleted_profiles 
+                    SELECT * FROM matrimony_profiles 
+                    WHERE matrimony_id = %s
+                """, (m_id,))
+
+                if cur.rowcount == 0:
+                    logger.warning(f"Profile {m_id} not found, skipping")
+                    continue
+
+                cur.execute("DELETE FROM matrimony_refresh_tokens WHERE matrimony_id = %s", (m_id,))
                 cur.execute("DELETE FROM matrimony_profiles WHERE matrimony_id = %s", (m_id,))
+
                 deleted_count += 1
                 deleted_log_ids.append(m_id)
-        
+
+            except Exception as e:
+                logger.error(f"Error deleting profile {m_id}: {str(e)}")
+                conn.rollback()
+                continue
+
         conn.commit()
-        logger.info(f"Admin {current_user.get('id')} deleted {deleted_count} profiles: {deleted_log_ids}")
+        logger.info(f"Admin deleted {deleted_count} profiles: {deleted_log_ids}")
         return {"status": "success", "message": f"{deleted_count} profiles deleted by admin"}
+
     except Exception as e:
         if 'conn' in locals() and conn: conn.rollback()
         logger.error(f"Error in admin profiles deletion: {str(e)}")

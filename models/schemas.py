@@ -150,7 +150,7 @@ class MatrimonyProfileResponse(BaseModel):
     height: Optional[str]
     weight: Optional[str]
     occupation: Optional[str]
-    annual_income: Optional[int]
+    annual_income: Optional[str]
     education: Optional[str]
     mother_tongue: Optional[str]
     profile_created_by: Optional[str]
@@ -190,11 +190,11 @@ class MatrimonyProfileResponse(BaseModel):
     preferred_location: Optional[str]
     preferred_work_status: Optional[str]
     photo: Optional[str] = None
-    photos: Optional[List[str]] = []
-    horoscope_documents: Optional[List[str]] = []
     dhosham: Optional[str]
     other_dhosham: Optional[str]    
     quarter: Optional[str]
+    photos: Optional[List[str]] = None
+    horoscope_documents: Optional[List[str]] = None
     is_active: Optional[str]
     blood_group: Optional[str]
     is_verified:  Optional[str]
@@ -298,7 +298,7 @@ class ContactUsCreate(BaseModel):
     message: str
 
 class ContactUsResponse(ContactUsCreate):
-    matrimony_id: str
+    id: int
     created_at: datetime
 
 class MarkViewedRequest(BaseModel):

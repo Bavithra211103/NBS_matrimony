@@ -322,6 +322,17 @@ def init_db():
                     except Exception as e:
                         logger.warning(f"Could not add column {col_name} to {table}: {e}")
 
+        try:
+            cur.execute("""
+                ALTER TABLE event_forms 
+                ALTER COLUMN event_time TYPE VARCHAR(50)
+                USING event_time::VARCHAR;
+            """)
+            logger.info("event_time column updated to VARCHAR(50)")
+        except Exception as e:
+            conn.rollback()
+            logger.info(f"event_time column already VARCHAR or skipped: {e}")
+
         conn.commit()
         print("[✓] Database initialized and migrated successfully.")
         logger.info("Database initialized and migrated successfully.")

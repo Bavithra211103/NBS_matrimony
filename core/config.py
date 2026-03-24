@@ -33,10 +33,15 @@ class Settings:
     BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
 
     AWS_CONFIG = {
-        "access_key": os.getenv("AWS_ACCESS_KEY_ID"),
-        "secret_key": os.getenv("AWS_SECRET_ACCESS_KEY"),
+        "access_key": os.getenv("AWS_ACCESS_KEY"),
+        "secret_key": os.getenv("AWS_SECRET_KEY"),
         "region": os.getenv("AWS_REGION"),
-        "bucket_name": os.getenv("AWS_S3_BUCKET")
+        "bucket_name": os.getenv("AWS_BUCKET_NAME")
     }
 
 settings = Settings()
+
+def __post_init__(self):
+    missing = [k for k, v in self.AWS_CONFIG.items() if not v]
+    if missing:
+        raise RuntimeError(f"Missing AWS config keys: {missing}. Check your .env file.")

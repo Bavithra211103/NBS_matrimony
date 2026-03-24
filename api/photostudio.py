@@ -777,7 +777,7 @@ async def admin_get_unselected_files(user_id: int):
         if 'cur' in locals(): cur.close()
         if 'conn' in locals(): conn.close()
 
-@router.post("/admin/product_frame", response_model=Dict[str, Any])
+@router.post("/admin/product_frames", response_model=Dict[str, Any])
 async def create_admin_product_frame(
     frame_name: str = Form(...),
     phone_number: str = Form(...),

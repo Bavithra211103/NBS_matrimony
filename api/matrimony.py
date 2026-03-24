@@ -36,9 +36,24 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/matrimony", tags=["Matrimony"])
 
-def convert_empty_to_none(value):
-    """ Convert empty strings to None (NULL in PostgreSQL) """
-    return None if value == "" else value
+def clean_value(value):
+    if value is None:
+        return None
+    str_val = str(value).strip().lower()
+    if str_val in ("", "nan", "none", "null", "n/a"):
+        return None
+    return value
+
+def clean_int(value):
+    if value is None:
+        return None
+    try:
+        str_val = str(value).strip()
+        if str_val.lower() in ("", "nan", "none", "null", "n/a"):
+            return None
+        return int(float(str_val))
+    except:
+        return None
 
 @router.post("/register")
 async def register_matrimony(
@@ -143,21 +158,66 @@ async def register_matrimony(
 
         actual_matrimony_id = matrimony_id or generate_matrimony_id()
 
-        values = tuple(convert_empty_to_none(v) for v in [
-            actual_matrimony_id, full_name, age, gender, date_of_birth,
-            email, hashed_password, phone_number, height, weight,
-            occupation, annual_income, education, mother_tongue,
-            profile_created_by, address, work_type, company,
-            work_location, work_country, mother_name, father_name,
-            sibling_count, elder_brother, elder_sister, younger_sister, younger_brother,
-            native, mother_occupation, father_occupation, religion, caste,
-            sub_caste, nakshatra, rashi, birth_time, birth_place,
-            ascendent, user_type, preferred_age_min, preferred_age_max,
-            preferred_height_min, preferred_height_max, preferred_religion,
-            preferred_caste, preferred_sub_caste, preferred_nakshatra,
-            preferred_rashi, preferred_location, preferred_work_status,
-            photo_url, photos_array, horoscope_array, dhosham, other_dhosham, quarter, marital_status, blood_group
-        ])
+        values = (
+            clean_value(actual_matrimony_id),
+            clean_value(full_name),
+            clean_int(age),
+            clean_value(gender),
+            clean_value(date_of_birth),
+            clean_value(email),
+            hashed_password,
+            clean_value(phone_number),
+            clean_int(height),
+            clean_int(weight),
+            clean_value(occupation),
+            clean_int(annual_income),
+            clean_value(education),
+            clean_value(mother_tongue),
+            clean_value(profile_created_by),
+            clean_value(address),
+            clean_value(work_type),
+            clean_value(company),
+            clean_value(work_location),
+            clean_value(work_country),
+            clean_value(mother_name),
+            clean_value(father_name),
+            clean_int(sibling_count),
+            clean_int(elder_brother),
+            clean_int(elder_sister),
+            clean_int(younger_sister),
+            clean_int(younger_brother),
+            clean_value(native),
+            clean_value(mother_occupation),
+            clean_value(father_occupation),
+            clean_value(religion),
+            clean_value(caste),
+            clean_value(sub_caste),
+            clean_value(nakshatra),
+            clean_value(rashi),
+            clean_value(birth_time),
+            clean_value(birth_place),
+            clean_value(ascendent),
+            clean_value(user_type),
+            clean_int(preferred_age_min),
+            clean_int(preferred_age_max),
+            clean_int(preferred_height_min),
+            clean_int(preferred_height_max),
+            clean_value(preferred_religion),
+            clean_value(preferred_caste),
+            clean_value(preferred_sub_caste),
+            clean_value(preferred_nakshatra),
+            clean_value(preferred_rashi),
+            clean_value(preferred_location),
+            clean_value(preferred_work_status),
+            clean_value(photo_url),
+            clean_value(photos_array),
+            clean_value(horoscope_array),
+            clean_value(dhosham),
+            clean_value(other_dhosham),
+            clean_value(quarter),
+            clean_value(marital_status),
+            clean_value(blood_group),
+        )
 
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=DictCursor)

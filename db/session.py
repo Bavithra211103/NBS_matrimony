@@ -14,3 +14,9 @@ def get_db_connection():
         logger.error(f"Database connection failed: {str(e)}")
         logger.error(traceback.format_exc())
         raise e
+
+def run_migrations(conn):
+    cur = conn.cursor()
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;")
+    conn.commit()
+    cur.close()

@@ -13,7 +13,7 @@ from core.config import settings
 from db.session import get_db_connection
 from datetime import datetime, timedelta, timezone
 from core.security import (
-    get_current_user, create_access_token, create_refresh_token, verify_password, get_password_hash
+    get_current_user, create_access_token, create_refresh_token, verify_password, get_password_hash, pwd_context
 )
 from models.schemas import (
     GetFileUpdate, FileSelectionsRequest, UserCreate, UserLogin, Token, 

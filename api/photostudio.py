@@ -306,6 +306,222 @@ async def get_uploaded_files(
         if 'cur' in locals(): cur.close()
         if 'conn' in locals(): conn.close()
 
+
+# Private Register Module
+@router.post("/private/admin/register", response_model=Dict[str, Any])
+async def register(user: UserCreate):
+    logger.info(f"Received registration request: {user}")
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    try:
+        hashed_password = pwd_context.hash(user.password)
+
+        # Check if the user exists
+        cur.execute("SELECT id FROM users WHERE email = %s", (user.email,))
+        existing_user = cur.fetchone()
+
+        if existing_user:
+            user_id = existing_user[0]
+            # Update password, user_type, and set is_active = TRUE
+            cur.execute(
+                """
+                UPDATE users
+                SET password_hash = %s, user_type = %s, is_active = TRUE
+                WHERE id = %s
+                """,
+                (hashed_password, user.user_type, user_id)
+            )
+            is_active = True
+            message = "Existing user updated"
+        else:
+            # Insert new user with is_active = FALSE
+            cur.execute(
+                """
+                INSERT INTO users (email, password_hash, user_type, is_active)
+                VALUES (%s, %s, %s, FALSE) RETURNING id
+                """,
+                (user.email, hashed_password, user.user_type)
+            )
+            user_id = cur.fetchone()[0]
+            is_active = False
+            message = "New user registered"
+
+        conn.commit()
+
+        return {
+            "status": "success",
+            "message": message,
+            "data": {
+                "user_id": user_id,
+                "is_active": is_active,
+                "email": user.email,
+                "password": user.password
+            }
+        }
+
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Registration failed: {repr(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+    finally:
+        cur.close()
+        conn.close()
+
+
+# Login 
+@router.post("/private/admin/login", response_model=Dict[str, Any])
+async def login (user: UserLogin):
+    logger.info(f"Received Login request: {user}")  # Log the request payload
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    try:
+        cur.execute(
+            "SELECT id, email, password_hash, user_type FROM users WHERE email = %s",
+            (user.email,)
+        )
+        db_user = cur.fetchone()
+        
+        if not db_user or not pwd_context.verify(user.password, db_user[2]):
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid email or password"
+            )
+        
+        user_id = db_user[0] 
+
+        # Generate tokens
+        access_token = create_access_token(
+            {"sub": db_user[1], "user_type": db_user[3]},  # Payload
+            timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)  # Expiry time
+        )
+
+        refresh_token = create_refresh_token(
+            {"sub": db_user[1], "user_type": db_user[3]},  # Include user_type in the payload
+            timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)  # Expiry time
+        )
+        
+        # Store refresh token
+        cur.execute(
+            """
+            INSERT INTO refresh_tokens (token, user_id, expires_at)
+            VALUES (%s, %s, %s)
+            """,
+            (
+                refresh_token,
+                user_id,
+                datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+            )
+        )
+        conn.commit()
+        
+        return {
+            "message": "Login Successfully",
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "bearer",
+            "data": {    
+                "user_id": user_id,        
+                "email": db_user[1],
+                "user_type": db_user[3]  # Include user_type in the response
+            }
+        }
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+        conn.close()    
+
+# Login Refresh_token
+@router.post("/private/admin/refresh", response_model=Dict[str, Any])
+async def refresh_token(token: RefreshToken):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    try:
+        payload = jwt.decode(
+            token.refresh_token,
+            settings.REFRESH_SECRET_KEY,
+            algorithms=[settings.ALGORITHM]
+        )
+        email = payload.get("sub")
+        if email is None:
+            logger.error("Invalid refresh token: missing email in payload")
+            raise HTTPException(status_code=401, detail="Invalid refresh token")
+        
+        # Check if refresh token exists in DB
+        cur.execute(
+            """
+            SELECT user_id, expires_at
+            FROM refresh_tokens
+            WHERE token = %s AND expires_at > NOW()
+            """,
+            (token.refresh_token,)
+        )
+        db_token = cur.fetchone()
+        if not db_token:
+            logger.error("Invalid or expired refresh token")
+            raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
+        
+        # Fetch user info using user_id
+        cur.execute(
+            "SELECT id, email, user_type FROM users WHERE id = %s",
+            (db_token[0],)
+        )
+        db_user = cur.fetchone()
+        if not db_user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Generate new tokens
+        access_token = create_access_token(
+            {"sub": db_user[1], "user_type": db_user[2]},
+            timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        )
+        new_refresh_token = create_refresh_token(
+            {"sub": db_user[1], "user_type": db_user[2]},
+            timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+        )
+        
+        # Store new refresh token
+        cur.execute(
+            """
+            INSERT INTO refresh_tokens (token, user_id, expires_at)
+            VALUES (%s, %s, %s)
+            """,
+            (
+                new_refresh_token,
+                db_user[0],
+                datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+            )
+        )
+
+        # Delete old refresh token
+        cur.execute(
+            "DELETE FROM refresh_tokens WHERE token = %s",
+            (token.refresh_token,)
+        )
+        conn.commit()
+
+        return {
+            "access_token": access_token,
+            "refresh_token": new_refresh_token,
+            "token_type": "bearer",
+            "email": db_user[1],
+            "user_type": db_user[2]
+        }
+    except JWTError:
+        logger.error("Invalid refresh token")
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Internal server error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+    finally:
+        cur.close()
+        conn.close()
+
 @router.post("/admin/private/fileupload", response_model=Dict[str, Any])
 async def admin_upload_private_files(
     files: List[UploadFile] = File(...),

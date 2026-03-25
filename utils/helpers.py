@@ -7,7 +7,7 @@ from core.config import settings
 import string
 import logging
 from fastapi import HTTPException
-from firebase_admin import messaging
+from firebase_admin import messaging, credentials
 from db.session import get_db_connection
 
 logger = logging.getLogger(__name__)

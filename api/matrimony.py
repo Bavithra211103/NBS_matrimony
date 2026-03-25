@@ -876,8 +876,6 @@ async def get_my_profiles(current_user: dict = Depends(get_current_user_matrimon
             (%(email)s IS NULL OR mp.email = %(email)s)
             AND (%(matrimony_id)s IS NULL OR mp.matrimony_id = %(matrimony_id)s)
             AND mp.is_active = TRUE
-            AND mp.is_verified = TRUE
-            AND mp.verification_status = 'approve'
         LIMIT 1;
         """
         cur.execute(query, {"email": email, "matrimony_id": matrimony_id})

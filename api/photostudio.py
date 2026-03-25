@@ -777,6 +777,26 @@ async def admin_get_unselected_files(user_id: int):
         if 'cur' in locals(): cur.close()
         if 'conn' in locals(): conn.close()
 
+@router.get("/admin/product_frames", response_model=List[Dict[str, Any]])
+async def get_product_frames(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    if current_user.get("user_type") != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can access this endpoint")
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute("SELECT * FROM product_frames ORDER BY id DESC")
+        frames = cur.fetchall()
+        return [dict(f) for f in frames]
+    except Exception as e:
+        logger.error(f"Error fetching product frames: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+    finally:
+        if 'cur' in locals(): cur.close()
+        if 'conn' in locals(): conn.close()
+
 @router.post("/admin/product_frames", response_model=Dict[str, Any])
 async def create_admin_product_frame(
     frame_name: str = Form(...),

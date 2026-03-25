@@ -39,10 +39,10 @@ router = APIRouter(prefix="/matrimony", tags=["Matrimony"])
 def clean_value(value):
     if value is None:
         return None
-    str_val = str(value).strip().lower()
-    if str_val in ("", "nan", "none", "null", "n/a"):
+    str_val = str(value).strip()
+    if str_val.lower() in ("", "nan", "none", "null", "n/a"):
         return None
-    return value
+    return value  
 
 def clean_int(value):
     if value is None:
@@ -51,8 +51,12 @@ def clean_int(value):
         str_val = str(value).strip()
         if str_val.lower() in ("", "nan", "none", "null", "n/a"):
             return None
-        return int(float(str_val))
-    except:
+        f = float(str_val)
+        import math
+        if math.isnan(f) or math.isinf(f):   
+            return None
+        return int(f)
+    except (ValueError, TypeError):
         return None
 
 @router.post("/register")
